@@ -40,9 +40,9 @@ const video = {
     },
   ],
   dynamicprice: JSON.stringify([
-    { inputs: { resolution: '720p', draft: 'false', duration: '5' }, price: 0.125, priceMethod: 'cpr' },
-    { inputs: { resolution: '720p', draft: 'false', duration: '10' }, price: 0.25, priceMethod: 'cpr' },
-    { inputs: { resolution: '1080p', draft: 'false', duration: '5' }, price: 0.3, priceMethod: 'cpr' },
+    { inputs: { resolution: '720p', draft: 'false', duration: '5' }, price: 0.125, priceMethod: 'per-run' },
+    { inputs: { resolution: '720p', draft: 'false', duration: '10' }, price: 0.25, priceMethod: 'per-run' },
+    { inputs: { resolution: '1080p', draft: 'false', duration: '5' }, price: 0.3, priceMethod: 'per-run' },
   ]),
 };
 
@@ -70,7 +70,7 @@ describe('runValues', () => {
 
 describe('priceStep', () => {
   it('takes the row that matches the settings, defaults included', () => {
-    assert.deepEqual(priceModelRun(video, {}), { kind: 'priced', value: 0.125, method: 'cpr' });
+    assert.deepEqual(priceModelRun(video, {}), { kind: 'priced', value: 0.125, method: 'per-run' });
     assert.equal(priceModelRun(video, { duration: 10 }).value, 0.25, 'a number matches "10"');
     assert.equal(priceModelRun(video, { resolution: '1080p' }).value, 0.3);
     assert.deepEqual(priceModelRun(video, { duration: '10', resolution: '1080p' }), { kind: 'unknown' });
@@ -78,9 +78,9 @@ describe('priceStep', () => {
 
   it('counts files for QUANTITY rows', () => {
     const rows = [
-      { inputs: { inputImage: 'QUANTITY:0' }, price: 0.01, priceMethod: 'cpr' },
-      { inputs: { inputImage: 'QUANTITY:1' }, price: 0.02, priceMethod: 'cpr' },
-      { inputs: { inputImage: 'QUANTITY:3' }, price: 0.05, priceMethod: 'cpr' },
+      { inputs: { inputImage: 'QUANTITY:0' }, price: 0.01, priceMethod: 'per-run' },
+      { inputs: { inputImage: 'QUANTITY:1' }, price: 0.02, priceMethod: 'per-run' },
+      { inputs: { inputImage: 'QUANTITY:3' }, price: 0.05, priceMethod: 'per-run' },
     ];
     const model = tool(rows);
     assert.equal(priceModelRun(model, {}).value, 0.01);
@@ -93,37 +93,93 @@ describe('priceStep', () => {
   });
 
   it('prices by prompt length, outputs and video seconds', () => {
-    const perCharacter = tool([{ inputs: {}, price: 0.00004, priceMethod: 'cp-promptlength' }]);
+    const perCharacter = tool([{ inputs: {}, price: 0.00004, priceMethod: 'per-input-character' }]);
     assert.equal(priceModelRun(perCharacter, { prompt: 'x'.repeat(500) }).value.toFixed(3), '0.020');
     assert.deepEqual(priceModelRun(perCharacter, {}), {
       kind: 'per-unit',
       rate: 0.00004,
-      unit: 'character of the prompt',
-      method: 'cp-promptlength',
+      unit: 'prompt character',
+      method: 'per-input-character',
     });
-    const perOutput = tool([{ inputs: {}, price: 0.03, priceMethod: 'cpo' }]);
+    const perOutput = tool([{ inputs: {}, price: 0.03, priceMethod: 'per-output-file' }]);
     assert.equal(priceModelRun(perOutput, { samples: 3 }).value.toFixed(2), '0.09');
-    const perSecond = tool([{ inputs: {}, price: 0.06, priceMethod: 'cp-outputVideoLength' }]);
+    const perSecond = tool([{ inputs: {}, price: 0.06, priceMethod: 'per-output-video-second' }]);
     assert.equal(priceModelRun(perSecond, { duration: '5' }).value.toFixed(2), '0.30');
+    assert.equal(priceModelRun(perSecond, {}).unit, 'second of output video');
     assert.equal(priceModelRun(perSecond, {}).kind, 'per-unit');
+  });
+
+  it('prices input audio and video per second, each input at most maxSeconds', () => {
+    const vsr = tool([
+      { inputs: { resolution: '720p' }, price: 0.015, priceMethod: 'per-input-video-second', maxSeconds: 60 },
+      { inputs: { resolution: '1080p' }, price: 0.025, priceMethod: 'per-input-video-second', maxSeconds: 60 },
+    ]);
+    const price = priceModelRun(vsr, { resolution: '1080p' }, { inputVideo: ['clip.mp4'] });
+    assert.deepEqual(price, {
+      kind: 'per-unit',
+      rate: 0.025,
+      unit: 'second of input video',
+      method: 'per-input-video-second',
+      maxSeconds: 60,
+    });
+    assert.equal(
+      describePart({ label: 'kandinskylab/kandinsky-6-0-vsr-2-0', price, llm: false }),
+      'kandinskylab/kandinsky-6-0-vsr-2-0: $0.025 per second of input video, each input at most 60 seconds',
+    );
+    assert.deepEqual(priceStep(tool([{ inputs: {}, price: 0.0003, priceMethod: 'per-input-audio-second' }]), {}), {
+      kind: 'per-unit',
+      rate: 0.0003,
+      unit: 'second of input audio',
+      method: 'per-input-audio-second',
+    });
+    // maxSeconds counts only on the input-length methods.
+    const output = tool([{ inputs: {}, price: 0.06, priceMethod: 'per-output-video-second', maxSeconds: 5 }]);
+    assert.equal(priceModelRun(output, { duration: '10' }).value.toFixed(2), '0.60');
+  });
+
+  it('knows only the methods Wiro bills by: an old id has no price before the run', () => {
+    for (const old of [
+      'cpr',
+      'cps',
+      'cpo',
+      'cpt',
+      'cp-pixel',
+      'cp-promptlength',
+      'cp-audiosecondslength',
+      'cp-outputVideoLength',
+      'cp-realtimeturn',
+      'cp-readoutput',
+      'cp',
+      'cp-request',
+      'cp-image',
+      'cp-frame',
+      'cp-byte',
+    ]) {
+      assert.equal(priceStep(tool([{ inputs: {}, price: 0.5, priceMethod: old }]), {}).kind, 'unknown', old);
+    }
+    assert.equal(priceStep(tool([{ inputs: {}, price: 0.5, priceMethod: 'per-output-megapixel' }]), {}).value, 0.5);
+    assert.equal(priceStep(tool([{ inputs: {}, price: 0, priceMethod: 'per-realtime-turn' }]), {}).kind, 'metered');
   });
 
   it('knows prices that are set when the run ends', () => {
     assert.deepEqual(
-      priceStep(tool([{ inputs: {}, price: 0, priceMethod: 'cp-readoutput', note: '$0.05 per 1M tokens' }]), {}),
+      priceStep(tool([{ inputs: {}, price: 0, priceMethod: 'reported-price', note: '$0.05 per 1M tokens' }]), {}),
       {
         kind: 'metered',
-        method: 'cp-readoutput',
+        method: 'reported-price',
         note: '$0.05 per 1M tokens',
       },
     );
-    assert.deepEqual(priceStep(tool([{ inputs: {}, price: 0.4, priceMethod: 'cp-readoutput' }]), {}), {
+    assert.deepEqual(priceStep(tool([{ inputs: {}, price: 0.4, priceMethod: 'reported-price' }]), {}), {
       kind: 'priced',
       value: 0.4,
-      method: 'cp-readoutput',
+      method: 'reported-price',
       basis: 'listed',
     });
-    assert.equal(priceStep(tool([{ inputs: {}, price: 0.00001, priceMethod: 'cpt' }]), {}).kind, 'per-unit');
+    assert.equal(
+      priceStep(tool([{ inputs: {}, price: 0.00001, priceMethod: 'per-total-token' }]), {}).kind,
+      'per-unit',
+    );
   });
 
   it('falls back to the average of past runs, then the rate per second', () => {
@@ -136,13 +192,16 @@ describe('priceStep', () => {
       kind: 'per-unit',
       rate: 0.001,
       unit: 'second of run time',
-      method: 'cps',
+      method: 'per-run-second',
     });
     assert.deepEqual(priceStep(tool(null), {}), { kind: 'unknown' });
   });
 
   it('takes off the discount', () => {
-    assert.equal(priceStep(tool([{ inputs: {}, price: 0.2, priceMethod: 'cpr' }], { discount: '25' }), {}).value, 0.15);
+    assert.equal(
+      priceStep(tool([{ inputs: {}, price: 0.2, priceMethod: 'per-run' }], { discount: '25' }), {}).value,
+      0.15,
+    );
   });
 });
 
