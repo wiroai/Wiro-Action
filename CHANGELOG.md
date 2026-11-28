@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 (2026-11-28)
+
+- The price estimate reads Wiro's renamed price methods (`per-run`, `per-output-file`, `per-input-character` and the rest), so the estimate before a run and the `max-cost` check work with the current catalog. A row with a method Wiro does not bill by has no price before the run, so `max-cost` does not start it.
+- The new `per-input-video-second` is a price per second of input video in the estimate log, and an option's `maxSeconds` is named with it: "$0.025 per second of input video, each input at most 60 seconds".
+- The units use Wiro's words: "per prompt character", "per second of output video", "per input and output token".
+
 ## 1.1.0 (2026-11-11)
 
 - **Workflow mode.** Run one of your Wiro AI workflows by its link or full slug. `params` sets its inputs and `files` uploads local files for them. The action checks the inputs before it starts, logs each step, returns the End node's results in `outputs`, `urls` and `text`, and downloads files. The new `run-token` output holds the run's token.

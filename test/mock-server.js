@@ -223,7 +223,7 @@ const TOOLS = {
       { id: 'prompt', type: 'textarea' },
       { id: 'scale', type: 'number' },
     ],
-    dynamicprice: [{ inputs: { inputImage: 'QUANTITY:1' }, price: 0.002, priceMethod: 'cpr' }],
+    dynamicprice: [{ inputs: { inputImage: 'QUANTITY:1' }, price: 0.002, priceMethod: 'per-run' }],
   },
   'mock/image': {
     categories: ['text-to-image'],
@@ -231,7 +231,7 @@ const TOOLS = {
       { id: 'prompt', type: 'textarea', required: true, defaultvalue: 'A sample prompt' },
       select('aspectRatio', '1:1', ['1:1', '16:9']),
     ],
-    dynamicprice: [{ inputs: {}, price: 0.005, priceMethod: 'cpr' }],
+    dynamicprice: [{ inputs: {}, price: 0.005, priceMethod: 'per-run' }],
   },
   'mock/video': {
     categories: ['text-to-video', 'image-to-video'],
@@ -242,15 +242,15 @@ const TOOLS = {
       select('resolution', '720p', ['720p', '1080p']),
     ],
     dynamicprice: [
-      { inputs: { duration: '5', resolution: '720p' }, price: 0.125, priceMethod: 'cpr' },
-      { inputs: { duration: '10', resolution: '720p' }, price: 0.25, priceMethod: 'cpr' },
-      { inputs: { duration: '5', resolution: '1080p' }, price: 0.3, priceMethod: 'cpr' },
+      { inputs: { duration: '5', resolution: '720p' }, price: 0.125, priceMethod: 'per-run' },
+      { inputs: { duration: '10', resolution: '720p' }, price: 0.25, priceMethod: 'per-run' },
+      { inputs: { duration: '5', resolution: '1080p' }, price: 0.3, priceMethod: 'per-run' },
     ],
   },
   'mock/llm': {
     categories: ['llm', 'llm-tool-call'],
     parameters: [{ id: 'prompt', type: 'textarea', required: true }],
-    dynamicprice: [{ inputs: {}, price: 0, priceMethod: 'cp-readoutput', note: '1 million input token $0.05' }],
+    dynamicprice: [{ inputs: {}, price: 0, priceMethod: 'reported-price', note: '1 million input token $0.05' }],
   },
   'mock/timed': { categories: ['tool'], parameters: [], dynamicprice: null, cps: 0.001, approximatelycost: 0 },
   'mock/voice': {
@@ -262,7 +262,7 @@ const TOOLS = {
       { id: 'inputAudio', type: 'fileinput', required: true, defaultvalue: 'https://example.com/sample.mp3' },
       { id: 'stability', type: 'float', defaultvalue: '0.5' },
     ],
-    dynamicprice: [{ inputs: {}, price: 0.00004, priceMethod: 'cp-promptlength' }],
+    dynamicprice: [{ inputs: {}, price: 0.00004, priceMethod: 'per-input-character' }],
   },
 };
 

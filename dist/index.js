@@ -29614,7 +29614,7 @@ function create(patterns, options) {
 }
 
 // src/version.js
-var VERSION = "1.1.0";
+var VERSION = "1.1.1";
 var USER_AGENT = `wiro-action/${VERSION} (+https://github.com/wiroai/Wiro-Action)`;
 
 // src/files.js
@@ -29944,16 +29944,17 @@ import path7 from "node:path";
 // src/pricing.js
 import { inflateSync } from "node:zlib";
 var BILLED_METHODS = /* @__PURE__ */ new Set([
-  "cps",
-  "cpr",
-  "cp-promptlength",
-  "cp-audiosecondslength",
-  "cpo",
-  "cpt",
-  "cp-pixel",
-  "cp-realtimeturn",
-  "cp-readoutput",
-  "cp-outputVideoLength"
+  "per-run-second",
+  "per-run",
+  "per-input-character",
+  "per-input-audio-second",
+  "per-input-video-second",
+  "per-output-file",
+  "per-total-token",
+  "per-output-megapixel",
+  "per-realtime-turn",
+  "reported-price",
+  "per-output-video-second"
 ]);
 var FILE_TYPES = /* @__PURE__ */ new Set(["fileinput", "multifileinput", "multifileinputdrop", "combinefileinput"]);
 var TOKENS_PER_IMAGE = 1600;
@@ -30024,30 +30025,34 @@ function rowPrice(row, tool, selected, discounted) {
   const average = toNumber(tool?.approximatelycost);
   if (!BILLED_METHODS.has(method)) return { kind: "unknown", method };
   switch (method) {
-    case "cpr":
-    case "cp-pixel":
+    case "per-run":
+    case "per-output-megapixel":
       return priced(price);
-    case "cpo": {
+    case "per-output-file": {
       const outputs = Math.max(1, Math.floor(toNumber(selected.samples)) || 1);
       return priced(price * outputs);
     }
-    case "cp-promptlength": {
+    case "per-input-character": {
       const prompt = selected.prompt;
-      return typeof prompt === "string" && prompt ? priced(price * prompt.length) : perUnit("character of the prompt");
+      return typeof prompt === "string" && prompt ? priced(price * prompt.length) : perUnit("prompt character");
     }
-    case "cp-outputVideoLength": {
+    case "per-output-video-second": {
       const seconds = toNumber(selected.duration);
-      return seconds > 0 ? priced(price * seconds) : perUnit("second of video");
+      return seconds > 0 ? priced(price * seconds) : perUnit("second of output video");
     }
-    case "cp-readoutput":
-    case "cp-realtimeturn":
+    case "reported-price":
+    case "per-realtime-turn":
       return price > 0 ? priced(price, "listed") : { kind: "metered", method, ...note ? { note } : {} };
-    case "cps":
+    case "per-run-second":
       return average > 0 ? priced(average, "average") : perUnit("second of run time");
-    case "cpt":
-      return perUnit("token");
-    case "cp-audiosecondslength":
-      return perUnit("second of input audio");
+    case "per-total-token":
+      return perUnit("input and output token");
+    case "per-input-audio-second":
+    case "per-input-video-second": {
+      const maxSeconds = toNumber(row.maxSeconds);
+      const unit = method === "per-input-video-second" ? "second of input video" : "second of input audio";
+      return { ...perUnit(unit), ...maxSeconds > 0 ? { maxSeconds } : {} };
+    }
     default:
       return { kind: "unknown", method };
   }
@@ -30061,7 +30066,7 @@ function priceStep(tool, values) {
     if (average > 0) return { kind: "priced", value: discounted(average), basis: "average" };
     const perSecond = toNumber(tool?.cps) || toNumber(tool?.quegroupcps);
     if (perSecond > 0)
-      return { kind: "per-unit", rate: discounted(perSecond), unit: "second of run time", method: "cps" };
+      return { kind: "per-unit", rate: discounted(perSecond), unit: "second of run time", method: "per-run-second" };
     return { kind: "unknown" };
   }
   const selected = {};
@@ -30134,7 +30139,10 @@ function describePart(part) {
   if (price.kind === "priced" && price.basis === "listed")
     return `${part.label}: listed estimate, the run sets the final price`;
   if (price.kind === "priced" && price.basis === "average") return `${part.label}: average of past runs`;
-  if (price.kind === "per-unit") return `${part.label}: $${formatUsd(price.rate ?? 0)} per ${price.unit}`;
+  if (price.kind === "per-unit") {
+    const cap = price.maxSeconds ? `, each input at most ${price.maxSeconds} seconds` : "";
+    return `${part.label}: $${formatUsd(price.rate ?? 0)} per ${price.unit}${cap}`;
+  }
   if (price.kind === "metered") {
     return part.llm ? `${part.label}: billed by tokens when the run ends` : `${part.label}: the run sets its price when it ends${price.note ? ` (${price.note})` : ""}`;
   }
