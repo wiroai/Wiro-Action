@@ -29614,7 +29614,7 @@ function create(patterns, options) {
 }
 
 // src/version.js
-var VERSION = "1.1.0";
+var VERSION = "1.1.1";
 var USER_AGENT = `wiro-action/${VERSION} (+https://github.com/wiroai/Wiro-Action)`;
 
 // src/files.js
